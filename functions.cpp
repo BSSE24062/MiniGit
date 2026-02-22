@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <functional>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -175,11 +176,16 @@ void MiniGit::status() {
     
     cout << "\n=== Repository Status ===\n";
     
-    // Check for new files
+    // Check for new files and directories
     vector<string> newFiles;
+    vector<string> newDirs;
     for (const auto& [filename, fileInfo] : stagingArea) {
         if (lastCommitState.find(filename) == lastCommitState.end()) {
-            newFiles.push_back(filename);
+            if (fileInfo.isDirectory) {
+                newDirs.push_back(filename);
+            } else {
+                newFiles.push_back(filename);
+            }
         }
     }
     
@@ -187,22 +193,36 @@ void MiniGit::status() {
     vector<string> modifiedFiles;
     for (const auto& [filename, fileInfo] : stagingArea) {
         auto it = lastCommitState.find(filename);
-        if (it != lastCommitState.end() && it->second.hash != fileInfo.hash) {
+        if (it != lastCommitState.end() && !fileInfo.isDirectory && 
+            it->second.hash != fileInfo.hash) {
             modifiedFiles.push_back(filename);
         }
     }
     
-    // Check for deleted files
+    // Check for deleted files and directories
     vector<string> deletedFiles;
+    vector<string> deletedDirs;
     for (const auto& [filename, fileInfo] : lastCommitState) {
         if (stagingArea.find(filename) == stagingArea.end()) {
-            deletedFiles.push_back(filename);
+            if (fileInfo.isDirectory) {
+                deletedDirs.push_back(filename);
+            } else {
+                deletedFiles.push_back(filename);
+            }
         }
     }
     
-    if (newFiles.empty() && modifiedFiles.empty() && deletedFiles.empty()) {
+    if (newFiles.empty() && newDirs.empty() && modifiedFiles.empty() && 
+        deletedFiles.empty() && deletedDirs.empty()) {
         cout << "Nothing to commit, working tree clean\n";
     } else {
+        if (!newDirs.empty()) {
+            cout << "\nNew directories:\n";
+            for (const auto& dir : newDirs) {
+                cout << "  + " << dir << "/\n";
+            }
+        }
+        
         if (!newFiles.empty()) {
             cout << "\nNew files:\n";
             for (const auto& file : newFiles) {
@@ -214,6 +234,13 @@ void MiniGit::status() {
             cout << "\nModified files:\n";
             for (const auto& file : modifiedFiles) {
                 cout << "  M " << file << "\n";
+            }
+        }
+        
+        if (!deletedDirs.empty()) {
+            cout << "\nDeleted directories:\n";
+            for (const auto& dir : deletedDirs) {
+                cout << "  - " << dir << "/\n";
             }
         }
         
@@ -246,25 +273,34 @@ void MiniGit::commit(const string& message) {
         cout << "Creating initial commit...\n";
         for (const auto& [filename, fileInfo] : stagingArea) {
             newCommit->files[filename] = fileInfo;
-            cout << "  Added: " << filename << " (hash: " << fileInfo.hash << ")\n";
+            if (fileInfo.isDirectory) {
+                cout << "  Added: " << filename << "/ (directory)\n";
+            } else {
+                cout << "  Added: " << filename << " (hash: " << fileInfo.hash << ")\n";
+            }
         }
     } else {
         // Subsequent commits - compute and store deltas
         cout << "Creating commit...\n";
         
-        // Find new files
+        // Find new files and directories
         for (const auto& [filename, fileInfo] : stagingArea) {
             if (lastCommitState.find(filename) == lastCommitState.end()) {
                 newCommit->addedFiles.push_back(filename);
                 newCommit->files[filename] = fileInfo;
-                cout << "  Added: " << filename << "\n";
+                if (fileInfo.isDirectory) {
+                    cout << "  Added: " << filename << "/ (directory)\n";
+                } else {
+                    cout << "  Added: " << filename << "\n";
+                }
             }
         }
         
         // Find modified files and compute deltas
         for (const auto& [filename, fileInfo] : stagingArea) {
             auto it = lastCommitState.find(filename);
-            if (it != lastCommitState.end() && it->second.hash != fileInfo.hash) {
+            if (it != lastCommitState.end() && !fileInfo.isDirectory && 
+                it->second.hash != fileInfo.hash) {
                 FileDelta delta = computeDelta(filename, it->second.content, fileInfo.content);
                 newCommit->deltas.push_back(delta);
                 cout << "  Modified: " << filename << " (delta stored)\n";
@@ -273,11 +309,15 @@ void MiniGit::commit(const string& message) {
             }
         }
         
-        // Find deleted files
+        // Find deleted files and directories
         for (const auto& [filename, fileInfo] : lastCommitState) {
             if (stagingArea.find(filename) == stagingArea.end()) {
                 newCommit->deletedFiles.push_back(filename);
-                cout << "  Deleted: " << filename << "\n";
+                if (fileInfo.isDirectory) {
+                    cout << "  Deleted: " << filename << "/ (directory)\n";
+                } else {
+                    cout << "  Deleted: " << filename << "\n";
+                }
             }
         }
     }
