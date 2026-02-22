@@ -1,3 +1,4 @@
+
 // ============================================
 // FILE: functions.cpp
 // ============================================
@@ -20,10 +21,10 @@ size_t hashString(const string& str) {
 }
 
 // FileInfo implementations
-FileInfo::FileInfo() : hash(0), isDeleted(false) {}
+FileInfo::FileInfo() : hash(0), isDeleted(false), isDirectory(false) {}
 
-FileInfo::FileInfo(const string& name, size_t h, const string& c) 
-    : filename(name), hash(h), content(c), isDeleted(false) {}
+FileInfo::FileInfo(const string& name, size_t h, const string& c, bool isDir) 
+    : filename(name), hash(h), content(c), isDeleted(false), isDirectory(isDir) {}
 
 // CommitNode implementation
 CommitNode::CommitNode() : commitId(0), parent(nullptr) {}
@@ -114,20 +115,34 @@ void MiniGit::scanRepository() {
         return;
     }
     
-    // Scan all files in repository
-    for (const auto& entry : fs::directory_iterator(repoPath)) {
-        if (entry.is_regular_file()) {
+    // Recursive function to scan directory and subdirectories
+    function<void(const string&, const string&)> scanDir = [&](const string& path, const string& relativePath) {
+        for (const auto& entry : fs::directory_iterator(path)) {
             string filename = entry.path().filename().string();
             
-            // Skip git directory files
+            // Skip .minigit directory
             if (filename.find(".minigit") != string::npos) continue;
             
-            string content = readFileContent(entry.path().string());
-            size_t hash = hashString(content);
+            string relPath = relativePath.empty() ? filename : relativePath + "/" + filename;
             
-            stagingArea[filename] = FileInfo(filename, hash, content);
+            if (entry.is_directory()) {
+                // Track the directory itself
+                stagingArea[relPath] = FileInfo(relPath, 0, "", true);
+                
+                // Recursively scan subdirectories
+                scanDir(entry.path().string(), relPath);
+            }
+            else if (entry.is_regular_file()) {
+                string content = readFileContent(entry.path().string());
+                size_t hash = hashString(content);
+                
+                stagingArea[relPath] = FileInfo(relPath, hash, content, false);
+            }
         }
-    }
+    };
+    
+    // Start scanning from root
+    scanDir(repoPath, "");
 }
 
 void MiniGit::init(const string& path) {

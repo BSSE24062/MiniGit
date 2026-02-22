@@ -27,9 +27,10 @@ struct FileInfo {
     size_t hash;
     string content;
     bool isDeleted;
+    bool isDirectory;
     
     FileInfo();
-    FileInfo(const string& name, size_t h, const string& c);
+    FileInfo(const string& name, size_t h, const string& c, bool isDir = false);
 };
 
 // Commit node structure
