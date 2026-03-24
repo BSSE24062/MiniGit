@@ -1,7 +1,3 @@
-
-// ============================================
-// FILE: main.cpp
-// ============================================
 #include "functions.h"
 #include <iostream>
 #include <sstream>
